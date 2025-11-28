@@ -1,0 +1,8 @@
+name: Synth Emulator
+icon: 🎹
+description: A MIDI-controllable synthesizer emulator with configurable CC mapping and real-time parameter control.
+bricks:
+  - arduino:web_ui
+  - arduino:wave_generator
+peripherals:
+  - arduino:midi_keyboard

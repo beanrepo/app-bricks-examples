@@ -1,0 +1,197 @@
+<!--
+SPDX-FileCopyrightText: Copyright (C) ARDUINO SRL (http://www.arduino.cc)
+
+SPDX-License-Identifier: MPL-2.0
+-->
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Synth Emulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <div class="header">
+      <h1 class="arduino-text">Synth Emulator</h1>
+      <img class="arduino-logo" src="./img/RGB-Arduino-Logo_Color Inline Loop.svg" alt="Arduino Logo">
+    </div>
+
+    <div id="main-content">
+      <!-- Left Panel: Synth Controls -->
+      <div id="synth-panel">
+        <h2>Synthesizer</h2>
+
+        <!-- Waveform Selector -->
+        <div class="control-group">
+          <label>Waveform</label>
+          <div class="waveform-selector">
+            <button class="waveform-btn active" data-waveform="sine">Sine</button>
+            <button class="waveform-btn" data-waveform="square">Square</button>
+            <button class="waveform-btn" data-waveform="sawtooth">Sawtooth</button>
+            <button class="waveform-btn" data-waveform="triangle">Triangle</button>
+          </div>
+        </div>
+
+        <!-- Two-column layout for controls -->
+        <div class="controls-grid">
+          <div class="control-group">
+            <label>Attack (ms)</label>
+            <input type="range" id="attack-slider" min="0" max="500" value="10" step="1">
+            <span id="attack-value">10</span> ms
+          </div>
+
+          <div class="control-group">
+            <label>Release (ms)</label>
+            <input type="range" id="release-slider" min="0" max="1000" value="100" step="1">
+            <span id="release-value">100</span> ms
+          </div>
+
+          <div class="control-group">
+            <label>Glide (ms)</label>
+            <input type="range" id="glide-slider" min="0" max="200" value="50" step="1">
+            <span id="glide-value">50</span> ms
+          </div>
+
+          <div class="control-group">
+            <label>Frequency (Hz)</label>
+            <input type="range" id="frequency-slider" min="100" max="2000" value="440" step="1">
+            <span id="frequency-value">440</span> Hz
+          </div>
+
+          <div class="control-group">
+            <label>Amplitude</label>
+            <input type="range" id="amplitude-slider" min="0" max="100" value="0" step="1">
+            <span id="amplitude-value">0.00</span>
+          </div>
+
+          <div class="control-group">
+            <label>Master Volume</label>
+            <input type="range" id="volume-slider" min="0" max="100" value="80" step="1">
+            <span id="volume-value">80</span> %
+          </div>
+        </div>
+
+        <!-- Virtual Keyboard -->
+        <div class="control-group">
+          <label>Virtual Keyboard</label>
+          <div id="keyboard">
+            <!-- White keys -->
+            <button class="key white" data-note="60">C4</button>
+            <button class="key black" data-note="61">C#</button>
+            <button class="key white" data-note="62">D4</button>
+            <button class="key black" data-note="63">D#</button>
+            <button class="key white" data-note="64">E4</button>
+            <button class="key white" data-note="65">F4</button>
+            <button class="key black" data-note="66">F#</button>
+            <button class="key white" data-note="67">G4</button>
+            <button class="key black" data-note="68">G#</button>
+            <button class="key white" data-note="69">A4</button>
+            <button class="key black" data-note="70">A#</button>
+            <button class="key white" data-note="71">B4</button>
+            <button class="key white" data-note="72">C5</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Panel: MIDI CC Mapping -->
+      <div id="midi-panel">
+        <h2>MIDI CC Mapping</h2>
+        <div id="midi-status" class="status-indicator">
+          <span class="status-dot"></span>
+          <span class="status-text">No MIDI Device</span>
+          <span class="device-name" id="device-name"></span>
+        </div>
+
+        <div class="mapping-group">
+          <h3>Parameter Mappings</h3>
+          <div class="mappings-grid">
+            <div class="mapping-row">
+              <span class="mapping-label">Waveform:</span>
+              <span class="mapping-cc" id="map-waveform">Not mapped</span>
+              <button class="learn-btn" data-param="waveform">Learn</button>
+              <button class="clear-btn" data-param="waveform">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Attack:</span>
+              <span class="mapping-cc" id="map-attack">CC1</span>
+              <button class="learn-btn" data-param="attack">Learn</button>
+              <button class="clear-btn" data-param="attack">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Release:</span>
+              <span class="mapping-cc" id="map-release">CC2</span>
+              <button class="learn-btn" data-param="release">Learn</button>
+              <button class="clear-btn" data-param="release">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Glide:</span>
+              <span class="mapping-cc" id="map-glide">CC3</span>
+              <button class="learn-btn" data-param="glide">Learn</button>
+              <button class="clear-btn" data-param="glide">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Frequency:</span>
+              <span class="mapping-cc" id="map-frequency">Not mapped</span>
+              <button class="learn-btn" data-param="frequency">Learn</button>
+              <button class="clear-btn" data-param="frequency">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Amplitude:</span>
+              <span class="mapping-cc" id="map-amplitude">CC7</span>
+              <button class="learn-btn" data-param="amplitude">Learn</button>
+              <button class="clear-btn" data-param="amplitude">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Volume:</span>
+              <span class="mapping-cc" id="map-master_volume">CC11</span>
+              <button class="learn-btn" data-param="master_volume">Learn</button>
+              <button class="clear-btn" data-param="master_volume">Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MIDI Activity Monitor -->
+        <div class="mapping-group">
+          <h3>MIDI Activity</h3>
+          <div id="midi-activity">
+            <div class="activity-log" id="midi-log">
+              <p class="placeholder">Waiting for MIDI messages...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div id="status-bar">
+      <div class="status-item">
+        <span class="status-label">Frequency:</span>
+        <span id="status-frequency">440.0 Hz</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Amplitude:</span>
+        <span id="status-amplitude">0.00</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Waveform:</span>
+        <span id="status-waveform">sine</span>
+      </div>
+      <div class="status-item midi-indicator" id="midi-indicator">
+        🎹 MIDI
+      </div>
+    </div>
+  </div>
+
+  <script src="libs/socket.io.min.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
