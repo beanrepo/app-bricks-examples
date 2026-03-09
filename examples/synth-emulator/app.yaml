@@ -4,5 +4,3 @@ description: A MIDI-controllable synthesizer emulator with configurable CC mappi
 bricks:
   - arduino:web_ui
   - arduino:wave_generator
-peripherals:
-  - arduino:midi_keyboard

@@ -4,8 +4,8 @@
 
 from arduino.app_bricks.web_ui import WebUI
 from arduino.app_bricks.wave_generator import WaveGenerator
-from arduino.app_peripherals.midi_keyboard import MIDIKeyboard
 from arduino.app_utils import App, Logger
+from midi_keyboard import MIDIKeyboard
 import logging
 
 logger = Logger("synth-emulator", logging.DEBUG)
