@@ -9,6 +9,7 @@
 
   // UI Elements
   const waveformBtns = document.querySelectorAll('.waveform-btn');
+  const voicesBtns = document.querySelectorAll('.voices-btn');
   const attackSlider = document.getElementById('attack-slider');
   const releaseSlider = document.getElementById('release-slider');
   const glideSlider = document.getElementById('glide-slider');
@@ -31,6 +32,7 @@
   const statusFrequency = document.getElementById('status-frequency');
   const statusAmplitude = document.getElementById('status-amplitude');
   const statusWaveform = document.getElementById('status-waveform');
+  const statusVoices = document.getElementById('status-voices');
 
   const learnBtns = document.querySelectorAll('.learn-btn');
   const clearBtns = document.querySelectorAll('.clear-btn');
@@ -68,6 +70,11 @@
       statusWaveform.textContent = data.waveform;
       // Update waveform selector always (including MIDI source)
       setActiveWaveform(data.waveform);
+    }
+
+    if (data.voices !== undefined) {
+      statusVoices.textContent = data.voices;
+      setActiveVoices(data.voices);
     }
 
     if (data.volume !== undefined) {
@@ -177,6 +184,27 @@
     });
   }
 
+  function setActiveVoices(n) {
+    const voices = String(n);
+    voicesBtns.forEach(btn => {
+      if (btn.getAttribute('data-voices') === voices) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  // Voices selector
+  voicesBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const voices = parseInt(btn.getAttribute('data-voices'));
+      socket.emit('synth:set_voices', { voices });
+      setActiveVoices(voices);
+      statusVoices.textContent = voices;
+    });
+  });
+
   // Envelope sliders
   attackSlider.addEventListener('input', (e) => {
     const value = parseInt(e.target.value);
@@ -226,12 +254,17 @@
     });
 
     key.addEventListener('mouseup', () => {
-      socket.emit('synth:note_off', {});
+      const note = parseInt(key.getAttribute('data-note'));
+      socket.emit('synth:note_off', { note });
       key.classList.remove('pressed');
     });
 
     key.addEventListener('mouseleave', () => {
-      key.classList.remove('pressed');
+      if (key.classList.contains('pressed')) {
+        const note = parseInt(key.getAttribute('data-note'));
+        socket.emit('synth:note_off', { note });
+        key.classList.remove('pressed');
+      }
     });
   });
 

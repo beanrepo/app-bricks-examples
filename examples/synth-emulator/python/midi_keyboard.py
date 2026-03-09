@@ -40,12 +40,24 @@ class AkaiMPKMiniPlusProfile(MIDIProfile):
         super().__init__()
         self.name = "Akai MPK Mini Plus"
         self.note_map = {
-            36: "pad_1", 37: "pad_2", 38: "pad_3", 39: "pad_4",
-            40: "pad_5", 41: "pad_6", 42: "pad_7", 43: "pad_8",
+            36: "pad_1",
+            37: "pad_2",
+            38: "pad_3",
+            39: "pad_4",
+            40: "pad_5",
+            41: "pad_6",
+            42: "pad_7",
+            43: "pad_8",
         }
         self.cc_map = {
-            70: "knob_1", 71: "knob_2", 72: "knob_3", 73: "knob_4",
-            74: "knob_5", 75: "knob_6", 76: "knob_7", 77: "knob_8",
+            70: "knob_1",
+            71: "knob_2",
+            72: "knob_3",
+            73: "knob_4",
+            74: "knob_5",
+            75: "knob_6",
+            76: "knob_7",
+            77: "knob_8",
             1: "modwheel",
         }
         self.has_pitchbend = True
@@ -56,16 +68,34 @@ class AkaiMPCMiniProfile(MIDIProfile):
         super().__init__()
         self.name = "Akai MPC Mini"
         self.note_map = {
-            36: "pad_1",  37: "pad_2",  38: "pad_3",  39: "pad_4",
-            40: "pad_5",  41: "pad_6",  42: "pad_7",  43: "pad_8",
-            44: "pad_9",  45: "pad_10", 46: "pad_11", 47: "pad_12",
-            48: "pad_13", 49: "pad_14", 50: "pad_15", 51: "pad_16",
+            36: "pad_1",
+            37: "pad_2",
+            38: "pad_3",
+            39: "pad_4",
+            40: "pad_5",
+            41: "pad_6",
+            42: "pad_7",
+            43: "pad_8",
+            44: "pad_9",
+            45: "pad_10",
+            46: "pad_11",
+            47: "pad_12",
+            48: "pad_13",
+            49: "pad_14",
+            50: "pad_15",
+            51: "pad_16",
         }
         for i in range(16):
             self.note_map[52 + i] = f"pad_b_{i + 1}"
         self.cc_map = {
-            70: "knob_1", 71: "knob_2", 72: "knob_3", 73: "knob_4",
-            74: "knob_5", 75: "knob_6", 76: "knob_7", 77: "knob_8",
+            70: "knob_1",
+            71: "knob_2",
+            72: "knob_3",
+            73: "knob_4",
+            74: "knob_5",
+            75: "knob_6",
+            76: "knob_7",
+            77: "knob_8",
         }
 
 
@@ -74,10 +104,22 @@ class NIMaschineMikroProfile(MIDIProfile):
         super().__init__()
         self.name = "NI Maschine Mikro MK3"
         self.note_map = {
-            36: "pad_1",  37: "pad_2",  38: "pad_3",  39: "pad_4",
-            40: "pad_5",  41: "pad_6",  42: "pad_7",  43: "pad_8",
-            44: "pad_9",  45: "pad_10", 46: "pad_11", 47: "pad_12",
-            48: "pad_13", 49: "pad_14", 50: "pad_15", 51: "pad_16",
+            36: "pad_1",
+            37: "pad_2",
+            38: "pad_3",
+            39: "pad_4",
+            40: "pad_5",
+            41: "pad_6",
+            42: "pad_7",
+            43: "pad_8",
+            44: "pad_9",
+            45: "pad_10",
+            46: "pad_11",
+            47: "pad_12",
+            48: "pad_13",
+            49: "pad_14",
+            50: "pad_15",
+            51: "pad_16",
         }
         self.cc_map = {22: "encoder", 1: "touch_strip"}
         self.has_aftertouch = True
@@ -102,14 +144,31 @@ class GeneralMIDIDrumMapProfile(MIDIProfile):
         super().__init__()
         self.name = "General MIDI Drum Map"
         self.note_map = {
-            35: "kick_acoustic", 36: "kick", 37: "side_stick",
-            38: "snare_acoustic", 39: "clap", 40: "snare_electric",
-            41: "tom_low_floor", 42: "hihat_closed", 43: "tom_low",
-            44: "hihat_pedal", 45: "tom_mid", 46: "hihat_open",
-            47: "tom_mid_low", 48: "tom_mid_high", 49: "crash_1",
-            50: "tom_high", 51: "ride_1", 52: "chinese", 53: "ride_bell",
-            54: "tambourine", 55: "splash", 56: "cowbell", 57: "crash_2",
-            58: "vibraslap", 59: "ride_2",
+            35: "kick_acoustic",
+            36: "kick",
+            37: "side_stick",
+            38: "snare_acoustic",
+            39: "clap",
+            40: "snare_electric",
+            41: "tom_low_floor",
+            42: "hihat_closed",
+            43: "tom_low",
+            44: "hihat_pedal",
+            45: "tom_mid",
+            46: "hihat_open",
+            47: "tom_mid_low",
+            48: "tom_mid_high",
+            49: "crash_1",
+            50: "tom_high",
+            51: "ride_1",
+            52: "chinese",
+            53: "ride_bell",
+            54: "tambourine",
+            55: "splash",
+            56: "cowbell",
+            57: "crash_2",
+            58: "vibraslap",
+            59: "ride_2",
         }
 
 
@@ -589,6 +648,7 @@ class MIDIKeyboard:
     @staticmethod
     def frequency_to_note(frequency: float) -> int:
         import math
+
         return int(round(69 + 12 * math.log2(frequency / 440.0)))
 
     def get_profile_info(self) -> Optional[dict]:

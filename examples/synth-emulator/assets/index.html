@@ -35,6 +35,16 @@ SPDX-License-Identifier: MPL-2.0
           </div>
         </div>
 
+        <!-- Polyphony Selector -->
+        <div class="control-group">
+          <label>Polyphony</label>
+          <div class="voices-selector">
+            <button class="voices-btn active" data-voices="1">1 voice</button>
+            <button class="voices-btn" data-voices="2">2 voices</button>
+            <button class="voices-btn" data-voices="3">3 voices</button>
+          </div>
+        </div>
+
         <!-- Two-column layout for controls -->
         <div class="controls-grid">
           <div class="control-group">
@@ -184,6 +194,10 @@ SPDX-License-Identifier: MPL-2.0
       <div class="status-item">
         <span class="status-label">Waveform:</span>
         <span id="status-waveform">sine</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Voices:</span>
+        <span id="status-voices">1</span>
       </div>
       <div class="status-item midi-indicator" id="midi-indicator">
         🎹 MIDI

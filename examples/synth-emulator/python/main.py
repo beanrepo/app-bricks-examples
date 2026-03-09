@@ -3,24 +3,20 @@
 # SPDX-License-Identifier: MPL-2.0
 
 from arduino.app_bricks.web_ui import WebUI
-from arduino.app_bricks.wave_generator import WaveGenerator
 from arduino.app_utils import App, Logger
 from midi_keyboard import MIDIKeyboard
+from poly_wave_generator import PolyWaveGenerator
 import logging
 
 logger = Logger("synth-emulator", logging.DEBUG)
 
-# Wave generator brick - handles audio generation and streaming
-wave_gen = WaveGenerator(
+# Polyphonic wave generator (1–3 voices sharing a single speaker stream)
+wave_gen = PolyWaveGenerator(
     wave_type="sine",
     attack=0.01,
     release=0.1,
-    glide=0.0,  # No glide = instant pitch changes (eliminates CPU overhead)
+    glide=0.0,
 )
-
-# Set initial state
-wave_gen.frequency = 440.0
-wave_gen.amplitude = 0.0
 
 # MIDI CC mapping configuration (stored in memory, configurable via UI)
 # Maps MIDI CC numbers to synth parameters
@@ -37,8 +33,6 @@ cc_mapping = {
 
 # --- MIDI Keyboard support (optional) -----------------------------------------------
 midi = None
-midi_active_notes = []
-midi_base_frequency = 440.0  # Base frequency for pitch bend tracking
 
 try:
     available_midi = MIDIKeyboard.list_usb_devices()
@@ -66,6 +60,7 @@ def on_connect(sid, data=None):
             "amplitude": state["amplitude"],
             "waveform": state["wave_type"],
             "volume": state["volume"],
+            "voices": state["voices"],
             "envelope": {
                 "attack": wave_gen.attack,
                 "release": wave_gen.release,
@@ -162,11 +157,9 @@ def on_note_on(sid, data=None):
     note = int(d.get("note", 60))  # MIDI note number
     velocity = int(d.get("velocity", 100))
 
+    wave_gen.note_on(note, velocity)
     freq = MIDIKeyboard.note_to_frequency(note)
     amp = velocity / 127.0
-
-    wave_gen.frequency = freq
-    wave_gen.amplitude = amp
 
     logger.info(f"Web UI Note ON: {note} ({freq:.1f}Hz) vel={velocity}")
     ui.send_message("synth:state", {"frequency": freq, "amplitude": amp})
@@ -174,9 +167,23 @@ def on_note_on(sid, data=None):
 
 def on_note_off(sid, data=None):
     """Release note via web UI."""
-    wave_gen.amplitude = 0.0
+    d = data or {}
+    note = d.get("note")
+    if note is not None:
+        wave_gen.note_off(int(note))
+    else:
+        wave_gen.all_notes_off()
     logger.info("Web UI Note OFF")
     ui.send_message("synth:state", {"amplitude": 0.0})
+
+
+def on_set_voices(sid, data=None):
+    """Set the number of active polyphonic voices (1–3)."""
+    d = data or {}
+    voices = max(1, min(PolyWaveGenerator.MAX_VOICES, int(d.get("voices", 1))))
+    wave_gen.voices = voices
+    logger.info(f"Voices set to {voices}")
+    ui.send_message("synth:state", {"voices": voices})
 
 
 def on_update_cc_mapping(sid, data=None):
@@ -211,6 +218,7 @@ ui.on_message("synth:set_amplitude", on_set_amplitude)
 ui.on_message("synth:set_waveform", on_set_waveform)
 ui.on_message("synth:set_envelope", on_set_envelope)
 ui.on_message("synth:set_volume", on_set_volume)
+ui.on_message("synth:set_voices", on_set_voices)
 ui.on_message("synth:note_on", on_note_on)
 ui.on_message("synth:note_off", on_note_off)
 ui.on_message("synth:update_cc_mapping", on_update_cc_mapping)
@@ -228,67 +236,35 @@ _PITCH_BEND_THROTTLE_SEC = 0.025  # 25ms = aggressive throttling
 
 def on_midi_note_on(note, velocity):
     """Handle MIDI note on."""
-    global midi_base_frequency
     logger.info(f"🎹 MIDI Note ON: note={note} velocity={velocity}")
-    midi_active_notes.append(note)
+    wave_gen.note_on(note, velocity)
     freq = MIDIKeyboard.note_to_frequency(note)
-    midi_base_frequency = freq  # Save base frequency for pitch wheel
     amp = velocity / 127.0
-
-    wave_gen.frequency = freq
-    # Re-trigger amplitude to apply attack envelope
-    wave_gen.amplitude = 0.0  # Reset to trigger attack
-    wave_gen.amplitude = amp
-
-    # Broadcast to web clients
     ui.send_message("synth:state", {"frequency": freq, "amplitude": amp, "source": "midi"})
 
 
 def on_midi_note_off(note, velocity):
-    """Handle MIDI note off with last-note priority."""
-    global midi_base_frequency
-    if note in midi_active_notes:
-        midi_active_notes.remove(note)
-
-    if midi_active_notes:
-        # Play most recent note
-        last_note = midi_active_notes[-1]
-        freq = MIDIKeyboard.note_to_frequency(last_note)
-        midi_base_frequency = freq  # Update base frequency for pitch wheel
-        wave_gen.frequency = freq
-        logger.debug(f"MIDI Note OFF: {note} → switching to {last_note}")
-        ui.send_message("synth:state", {"frequency": freq, "amplitude": wave_gen.amplitude, "source": "midi"})
-    else:
-        # No notes pressed, fade out
-        wave_gen.amplitude = 0.0
-        logger.debug(f"MIDI Note OFF: {note} → silence")
-        ui.send_message("synth:state", {"amplitude": 0.0, "source": "midi"})
+    """Handle MIDI note off."""
+    wave_gen.note_off(note)
+    logger.debug(f"MIDI Note OFF: {note}")
+    ui.send_message("synth:state", {"amplitude": wave_gen.amplitude, "source": "midi"})
 
 
 def on_midi_pitch_bend(value):
-    """Handle pitch bend with spring-back (±2 semitones = ±1 tono).
+    """Handle pitch bend (±2 semitones). Throttled to max every 25 ms."""
+    global _last_pitch_bend_time
 
-    Pitch wheel sends absolute value 0-16383 with center at 8192.
-    When released, wheel springs back to center, sending all intermediate values.
-    Throttled to max every 15ms to prevent CPU overload and buffer underruns.
-    """
-    global midi_base_frequency, _last_pitch_bend_time
-
-    # Throttle: skip if less than 15ms since last pitch bend (use perf_counter for precision)
     current_time = time.perf_counter()
     if (current_time - _last_pitch_bend_time) < _PITCH_BEND_THROTTLE_SEC:
-        return  # Skip this event
+        return
     _last_pitch_bend_time = current_time
 
-    # Normalize to -1.0 to +1.0 (center = 0)
     normalized_bend = (value - 8192) / 8192.0
-    # Apply ±2 semitones range (1 tone)
     bend_semitones = normalized_bend * 2.0
     bend_factor = 2.0 ** (bend_semitones / 12.0)
-    new_freq = midi_base_frequency * bend_factor
-    wave_gen.frequency = new_freq
-    logger.debug(f"MIDI Pitch bend: {value} (norm={normalized_bend:.2f}) → {new_freq:.1f}Hz (base={midi_base_frequency:.1f}Hz)")
-    ui.send_message("synth:state", {"frequency": new_freq, "source": "midi"})
+    wave_gen.set_pitch_bend(bend_factor)
+    logger.debug(f"MIDI Pitch bend: {value} (norm={normalized_bend:.2f}) → factor={bend_factor:.4f}")
+    ui.send_message("synth:state", {"frequency": wave_gen.frequency, "source": "midi"})
 
 
 def on_midi_cc(control, value):
@@ -324,7 +300,7 @@ def on_midi_cc(control, value):
 
             elif param == "amplitude":
                 amp = value / 127.0
-                if midi_active_notes:  # Only if notes are playing
+                if wave_gen.has_active_notes:  # Only if notes are playing
                     wave_gen.amplitude = amp
                     ui.send_message("synth:state", {"amplitude": amp, "source": "midi"})
 

@@ -138,6 +138,38 @@ body {
   color: white;
 }
 
+/* Polyphony / Voices Selector */
+.voices-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voices-btn {
+  flex: 1;
+  min-width: 80px;
+  padding: 12px 16px;
+  background: #ECF1F1;
+  border: 2px solid #C9D2D2;
+  border-radius: 4px;
+  color: #2C353A;
+  font-size: 0.9em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.voices-btn:hover {
+  background: #DAE3E3;
+  border-color: #008184;
+}
+
+.voices-btn.active {
+  background: #008184;
+  border-color: #008184;
+  color: white;
+}
+
 /* Sliders */
 input[type="range"] {
   width: 100%;
