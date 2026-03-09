@@ -288,6 +288,8 @@ ui.on_message("synth:learn_cc", on_learn_cc)
 # throttling every message would update the synth parameter and cause the
 # same crackling artefacts as unthrottled UI slider events.
 import time
+import queue
+import threading as _threading
 
 _CC_THROTTLE_SEC = 0.025  # 25 ms — max 40 updates/sec per CC number
 _PITCH_BEND_THROTTLE_SEC = _CC_THROTTLE_SEC  # keep name for compatibility
@@ -298,6 +300,35 @@ _last_pitch_bend_time = time.perf_counter()
 # every incoming CC regardless of whether it is mapped to a parameter.
 _last_cc_time: dict = {}
 
+# ---------------------------------------------------------------------------
+# Non-real-time UI dispatch queue
+# ---------------------------------------------------------------------------
+# MIDI callbacks run in the MIDIKeyboard-Listener thread.  Calling
+# ui.send_message() directly from there causes GIL contention with the
+# audio thread: JSON serialisation + socket write hold the GIL long enough
+# to delay the next audio block → occasional crackling even after throttling.
+#
+# Fix: MIDI handlers push (event, data) tuples onto this queue and return
+# immediately.  A dedicated non-real-time thread drains the queue so the
+# socket I/O never touches the MIDI or audio threads.
+_ui_queue: queue.SimpleQueue = queue.SimpleQueue()
+
+
+def _ui_dispatch_loop() -> None:
+    """Drain queued UI messages in a dedicated non-real-time thread."""
+    while True:
+        try:
+            event, data = _ui_queue.get(timeout=1.0)
+            ui.send_message(event, data)
+        except queue.Empty:
+            pass
+
+
+_ui_dispatch_thread = _threading.Thread(
+    target=_ui_dispatch_loop, daemon=True, name="UI-Dispatch"
+)
+_ui_dispatch_thread.start()
+
 
 def on_midi_note_on(note, velocity):
     """Handle MIDI note on."""
@@ -305,14 +336,14 @@ def on_midi_note_on(note, velocity):
     wave_gen.note_on(note, velocity)
     freq = MIDIKeyboard.note_to_frequency(note)
     amp = velocity / 127.0
-    ui.send_message("synth:state", {"frequency": freq, "amplitude": amp, "source": "midi"})
+    _ui_queue.put(("synth:state", {"frequency": freq, "amplitude": amp, "source": "midi"}))
 
 
 def on_midi_note_off(note, velocity):
     """Handle MIDI note off."""
     wave_gen.note_off(note)
     logger.debug(f"MIDI Note OFF: {note}")
-    ui.send_message("synth:state", {"amplitude": wave_gen.amplitude, "source": "midi"})
+    _ui_queue.put(("synth:state", {"amplitude": wave_gen.amplitude, "source": "midi"}))
 
 
 def on_midi_pitch_bend(value):
@@ -329,7 +360,7 @@ def on_midi_pitch_bend(value):
     bend_factor = 2.0 ** (bend_semitones / 12.0)
     wave_gen.set_pitch_bend(bend_factor)
     logger.debug(f"MIDI Pitch bend: {value} (norm={normalized_bend:.2f}) → factor={bend_factor:.4f}")
-    ui.send_message("synth:state", {"frequency": wave_gen.frequency, "source": "midi"})
+    _ui_queue.put(("synth:state", {"frequency": wave_gen.frequency, "source": "midi"}))
 
 
 def on_midi_cc(control, value):
@@ -358,91 +389,91 @@ def on_midi_cc(control, value):
                 waveforms = ["sine", "square", "sawtooth", "triangle"]
                 idx = min(3, int((value / 127.0) * 4))
                 wave_gen.wave_type = waveforms[idx]
-                ui.send_message("synth:state", {"waveform": waveforms[idx], "source": "midi"})
+                _ui_queue.put(("synth:state", {"waveform": waveforms[idx], "source": "midi"}))
 
             elif param == "attack":
                 attack_ms = (value / 127.0) * 500  # 0-500ms
                 wave_gen.attack = attack_ms / 1000.0
-                ui.send_message("synth:state", {"attack": attack_ms, "envelope": {"attack": attack_ms}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"attack": attack_ms, "envelope": {"attack": attack_ms}, "source": "midi"}))
 
             elif param == "decay":
                 decay_ms = (value / 127.0) * 1000
                 wave_gen.decay = decay_ms / 1000.0
-                ui.send_message("synth:state", {"envelope": {"decay": decay_ms}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"envelope": {"decay": decay_ms}, "source": "midi"}))
 
             elif param == "sustain":
                 sustain_pct = (value / 127.0) * 100
                 wave_gen.sustain = sustain_pct / 100.0
-                ui.send_message("synth:state", {"envelope": {"sustain": sustain_pct}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"envelope": {"sustain": sustain_pct}, "source": "midi"}))
 
             elif param == "release":
                 release_ms = (value / 127.0) * 1000  # 0-1000ms
                 wave_gen.release = release_ms / 1000.0
-                ui.send_message("synth:state", {"release": release_ms, "envelope": {"release": release_ms}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"release": release_ms, "envelope": {"release": release_ms}, "source": "midi"}))
 
             elif param == "glide":
                 glide_ms = (value / 127.0) * 200  # 0-200ms
                 wave_gen.glide = glide_ms / 1000.0
-                ui.send_message("synth:state", {"glide": glide_ms, "envelope": {"glide": glide_ms}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"glide": glide_ms, "envelope": {"glide": glide_ms}, "source": "midi"}))
 
             elif param == "amplitude":
                 amp = value / 127.0
                 if wave_gen.has_active_notes:  # Only if notes are playing
                     wave_gen.amplitude = amp
-                    ui.send_message("synth:state", {"amplitude": amp, "source": "midi"})
+                    _ui_queue.put(("synth:state", {"amplitude": amp, "source": "midi"}))
 
             elif param == "master_volume":
                 volume = int((value / 127.0) * 100)
                 wave_gen.volume = volume
-                ui.send_message("synth:state", {"volume": volume, "source": "midi"})
+                _ui_queue.put(("synth:state", {"volume": volume, "source": "midi"}))
 
             elif param == "frequency":
                 freq = 100 + (value / 127.0) * 1900
                 wave_gen.frequency = freq
-                ui.send_message("synth:state", {"frequency": freq, "source": "midi"})
+                _ui_queue.put(("synth:state", {"frequency": freq, "source": "midi"}))
 
             elif param == "cutoff":
                 cutoff = 20.0 + (value / 127.0) * (20000.0 - 20.0)
                 wave_gen.cutoff = cutoff
-                ui.send_message("synth:state", {"effects": {"cutoff": cutoff}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"effects": {"cutoff": cutoff}, "source": "midi"}))
 
             elif param == "resonance":
                 res_pct = (value / 127.0) * 100
                 wave_gen.resonance = res_pct / 100.0
-                ui.send_message("synth:state", {"effects": {"resonance": res_pct}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"effects": {"resonance": res_pct}, "source": "midi"}))
 
             elif param == "overdrive":
                 od_pct = (value / 127.0) * 100
                 wave_gen.overdrive = od_pct / 100.0
-                ui.send_message("synth:state", {"effects": {"overdrive": od_pct}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"effects": {"overdrive": od_pct}, "source": "midi"}))
 
             elif param == "tremolo_depth":
                 td_pct = (value / 127.0) * 100
                 wave_gen.tremolo_depth = td_pct / 100.0
-                ui.send_message("synth:state", {"effects": {"tremolo_depth": td_pct}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"effects": {"tremolo_depth": td_pct}, "source": "midi"}))
 
             elif param == "tremolo_rate":
                 rate = 0.1 + (value / 127.0) * 19.9  # 0.1–20 Hz
                 wave_gen.tremolo_rate = rate
-                ui.send_message("synth:state", {"effects": {"tremolo_rate": rate}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"effects": {"tremolo_rate": rate}, "source": "midi"}))
 
             elif param == "delay_time":
                 dt_ms = (value / 127.0) * 1000
                 wave_gen.delay_time = dt_ms / 1000.0
-                ui.send_message("synth:state", {"effects": {"delay_time": dt_ms}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"effects": {"delay_time": dt_ms}, "source": "midi"}))
 
             elif param == "delay_feedback":
                 fb_pct = (value / 127.0) * 95  # max 95%
                 wave_gen.delay_feedback = fb_pct / 100.0
-                ui.send_message("synth:state", {"effects": {"delay_feedback": fb_pct}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"effects": {"delay_feedback": fb_pct}, "source": "midi"}))
 
             elif param == "reverb_wet":
                 rv_pct = (value / 127.0) * 100
                 wave_gen.reverb_wet = rv_pct / 100.0
-                ui.send_message("synth:state", {"effects": {"reverb_wet": rv_pct}, "source": "midi"})
+                _ui_queue.put(("synth:state", {"effects": {"reverb_wet": rv_pct}, "source": "midi"}))
 
     # Also broadcast raw CC for monitoring/learning
-    ui.send_message("synth:midi_cc", {"control": control, "value": value})
+    _ui_queue.put(("synth:midi_cc", {"control": control, "value": value}))
 
 
 # --- Register MIDI callbacks if device available -----------------------------------
