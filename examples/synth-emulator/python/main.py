@@ -283,11 +283,23 @@ ui.on_message("synth:learn_cc", on_learn_cc)
 
 # --- MIDI event handlers (defined globally for hotplug support) --------------------
 
-# Pitch bend throttling - process max every 25ms to reduce CPU load
+# MIDI continuous-controller throttling (same strategy as pitch bend).
+# A physical knob or slider can send CC messages at 100-300 Hz; without
+# throttling every message would update the synth parameter and cause the
+# same crackling artefacts as unthrottled UI slider events.
 import time
 
-_last_pitch_bend_time = time.perf_counter()  # Initialize with current time
-_PITCH_BEND_THROTTLE_SEC = 0.025  # 25ms = aggressive throttling
+_CC_THROTTLE_SEC = 0.025  # 25 ms — max 40 updates/sec per parameter
+_PITCH_BEND_THROTTLE_SEC = _CC_THROTTLE_SEC  # keep name for compatibility
+
+_last_pitch_bend_time = time.perf_counter()
+
+# Discrete parameters (waveform) map CC values to a small set of choices —
+# they are not throttled so every step registers immediately.
+_CC_DISCRETE_PARAMS = {"waveform"}
+
+# Per-parameter timestamp dict — populated lazily on first CC message.
+_last_cc_time: dict = {}
 
 
 def on_midi_note_on(note, velocity):
@@ -327,9 +339,21 @@ def on_midi_cc(control, value):
     """Handle MIDI CC based on mapping configuration."""
     logger.debug(f"🎹 MIDI CC{control} = {value}")
 
+    now = time.perf_counter()
+
     # Check if this CC is mapped to any parameter
     for param, mapped_cc in cc_mapping.items():
         if mapped_cc == control:
+            # Throttle continuous parameters to avoid audio crackling from
+            # high-rate CC streams (knobs, expression pedals, etc.)
+            if param not in _CC_DISCRETE_PARAMS:
+                last = _last_cc_time.get(param, 0.0)
+                if (now - last) < _CC_THROTTLE_SEC:
+                    # Drop this message — a later one arriving after the
+                    # throttle window will carry the updated value.
+                    continue
+                _last_cc_time[param] = now
+
             logger.info(f"MIDI CC{control} ({value}) → {param}")
 
             if param == "waveform":
