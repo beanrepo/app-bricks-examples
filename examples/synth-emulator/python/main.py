@@ -289,16 +289,13 @@ ui.on_message("synth:learn_cc", on_learn_cc)
 # same crackling artefacts as unthrottled UI slider events.
 import time
 
-_CC_THROTTLE_SEC = 0.025  # 25 ms — max 40 updates/sec per parameter
+_CC_THROTTLE_SEC = 0.025  # 25 ms — max 40 updates/sec per CC number
 _PITCH_BEND_THROTTLE_SEC = _CC_THROTTLE_SEC  # keep name for compatibility
 
 _last_pitch_bend_time = time.perf_counter()
 
-# Discrete parameters (waveform) map CC values to a small set of choices —
-# they are not throttled so every step registers immediately.
-_CC_DISCRETE_PARAMS = {"waveform"}
-
-# Per-parameter timestamp dict — populated lazily on first CC message.
+# Per-CC-number timestamp dict — used at the entry of on_midi_cc to gate
+# every incoming CC regardless of whether it is mapped to a parameter.
 _last_cc_time: dict = {}
 
 
@@ -337,23 +334,23 @@ def on_midi_pitch_bend(value):
 
 def on_midi_cc(control, value):
     """Handle MIDI CC based on mapping configuration."""
-    logger.debug(f"🎹 MIDI CC{control} = {value}")
-
     now = time.perf_counter()
+
+    # Gate every CC number at the entry point — even unmapped knobs (e.g.
+    # data-entry wheels, mod wheels set to CC74, etc.) call ui.send_message
+    # and hold the GIL long enough to starve the audio thread → crackling.
+    # A single per-CC timestamp dict is enough: one throttle covers both the
+    # synth-parameter update AND the raw-CC broadcast below.
+    last_raw = _last_cc_time.get(control, 0.0)
+    if (now - last_raw) < _CC_THROTTLE_SEC:
+        return
+    _last_cc_time[control] = now
+
+    logger.debug(f"🎹 MIDI CC{control} = {value}")
 
     # Check if this CC is mapped to any parameter
     for param, mapped_cc in cc_mapping.items():
         if mapped_cc == control:
-            # Throttle continuous parameters to avoid audio crackling from
-            # high-rate CC streams (knobs, expression pedals, etc.)
-            if param not in _CC_DISCRETE_PARAMS:
-                last = _last_cc_time.get(param, 0.0)
-                if (now - last) < _CC_THROTTLE_SEC:
-                    # Drop this message — a later one arriving after the
-                    # throttle window will carry the updated value.
-                    continue
-                _last_cc_time[param] = now
-
             logger.info(f"MIDI CC{control} ({value}) → {param}")
 
             if param == "waveform":
