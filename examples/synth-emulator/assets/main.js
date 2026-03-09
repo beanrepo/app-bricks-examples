@@ -66,6 +66,18 @@
   let midiAvailable = false;
   let midiIndicatorTimeout = null;
 
+  // Throttle slider input events — mirrors the Python-side MIDI pitch-bend throttle.
+  // The label display is updated immediately; only the socket.emit is rate-limited.
+  // A companion 'change' listener guarantees the final value is sent on mouse/touch release.
+  const _SLIDER_THROTTLE_MS = 25; // max 40 messages/sec per slider
+  function throttle(fn, ms) {
+    let lastTime = 0;
+    return function (...args) {
+      const now = Date.now();
+      if (now - lastTime >= ms) { lastTime = now; fn.apply(this, args); }
+    };
+  }
+
   // --- Socket.IO Event Handlers ---
 
   socket.on('connect', () => {
@@ -240,85 +252,61 @@
     });
   });
 
-  // Envelope sliders
-  attackSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    attackValue.textContent = value;
-    socket.emit('synth:set_envelope', { attack: value });
-  });
+  // Envelope sliders — throttled + final-value guarantee on release
+  const _tAttack   = throttle((v) => socket.emit('synth:set_envelope', { attack: v }),   _SLIDER_THROTTLE_MS);
+  const _tDecay    = throttle((v) => socket.emit('synth:set_envelope', { decay: v }),    _SLIDER_THROTTLE_MS);
+  const _tSustain  = throttle((v) => socket.emit('synth:set_envelope', { sustain: v }),  _SLIDER_THROTTLE_MS);
+  const _tRelease  = throttle((v) => socket.emit('synth:set_envelope', { release: v }),  _SLIDER_THROTTLE_MS);
+  const _tGlide    = throttle((v) => socket.emit('synth:set_envelope', { glide: v }),    _SLIDER_THROTTLE_MS);
 
-  decaySlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    decayValue.textContent = value;
-    socket.emit('synth:set_envelope', { decay: value });
-  });
+  attackSlider.addEventListener('input',  (e) => { const v = parseInt(e.target.value); attackValue.textContent  = v; _tAttack(v);  });
+  attackSlider.addEventListener('change', (e) => socket.emit('synth:set_envelope', { attack:   parseInt(e.target.value) }));
 
-  sustainSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    sustainValue.textContent = value;
-    socket.emit('synth:set_envelope', { sustain: value });
-  });
+  decaySlider.addEventListener('input',   (e) => { const v = parseInt(e.target.value); decayValue.textContent   = v; _tDecay(v);   });
+  decaySlider.addEventListener('change',  (e) => socket.emit('synth:set_envelope', { decay:    parseInt(e.target.value) }));
 
-  releaseSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    releaseValue.textContent = value;
-    socket.emit('synth:set_envelope', { release: value });
-  });
+  sustainSlider.addEventListener('input', (e) => { const v = parseInt(e.target.value); sustainValue.textContent = v; _tSustain(v); });
+  sustainSlider.addEventListener('change',(e) => socket.emit('synth:set_envelope', { sustain:  parseInt(e.target.value) }));
 
-  glideSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    glideValue.textContent = value;
-    socket.emit('synth:set_envelope', { glide: value });
-  });
+  releaseSlider.addEventListener('input', (e) => { const v = parseInt(e.target.value); releaseValue.textContent = v; _tRelease(v); });
+  releaseSlider.addEventListener('change',(e) => socket.emit('synth:set_envelope', { release:  parseInt(e.target.value) }));
 
-  // Effects sliders
-  cutoffSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    cutoffValue.textContent = value;
-    socket.emit('synth:set_effects', { cutoff: value });
-  });
+  glideSlider.addEventListener('input',   (e) => { const v = parseInt(e.target.value); glideValue.textContent   = v; _tGlide(v);   });
+  glideSlider.addEventListener('change',  (e) => socket.emit('synth:set_envelope', { glide:    parseInt(e.target.value) }));
 
-  resonanceSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    resonanceValue.textContent = value;
-    socket.emit('synth:set_effects', { resonance: value });
-  });
+  // Effects sliders — throttled + final-value guarantee on release
+  const _tCutoff   = throttle((v) => socket.emit('synth:set_effects', { cutoff:          v }), _SLIDER_THROTTLE_MS);
+  const _tRes      = throttle((v) => socket.emit('synth:set_effects', { resonance:       v }), _SLIDER_THROTTLE_MS);
+  const _tOD       = throttle((v) => socket.emit('synth:set_effects', { overdrive:       v }), _SLIDER_THROTTLE_MS);
+  const _tTrD      = throttle((v) => socket.emit('synth:set_effects', { tremolo_depth:   v }), _SLIDER_THROTTLE_MS);
+  const _tTrR      = throttle((v) => socket.emit('synth:set_effects', { tremolo_rate:    v }), _SLIDER_THROTTLE_MS);
+  const _tDlyT     = throttle((v) => socket.emit('synth:set_effects', { delay_time:      v }), _SLIDER_THROTTLE_MS);
+  const _tDlyF     = throttle((v) => socket.emit('synth:set_effects', { delay_feedback:  v }), _SLIDER_THROTTLE_MS);
+  const _tRev      = throttle((v) => socket.emit('synth:set_effects', { reverb_wet:      v }), _SLIDER_THROTTLE_MS);
 
-  overdriveSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    overdriveValue.textContent = value;
-    socket.emit('synth:set_effects', { overdrive: value });
-  });
+  cutoffSlider.addEventListener('input',        (e) => { const v = parseInt(e.target.value); cutoffValue.textContent        = v; _tCutoff(v);  });
+  cutoffSlider.addEventListener('change',       (e) => socket.emit('synth:set_effects', { cutoff:         parseInt(e.target.value) }));
 
-  tremoloDepthSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    tremoloDepthValue.textContent = value;
-    socket.emit('synth:set_effects', { tremolo_depth: value });
-  });
+  resonanceSlider.addEventListener('input',     (e) => { const v = parseInt(e.target.value); resonanceValue.textContent     = v; _tRes(v);    });
+  resonanceSlider.addEventListener('change',    (e) => socket.emit('synth:set_effects', { resonance:      parseInt(e.target.value) }));
 
-  tremoloRateSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    tremoloRateValue.textContent = value;
-    socket.emit('synth:set_effects', { tremolo_rate: value });
-  });
+  overdriveSlider.addEventListener('input',     (e) => { const v = parseInt(e.target.value); overdriveValue.textContent     = v; _tOD(v);     });
+  overdriveSlider.addEventListener('change',    (e) => socket.emit('synth:set_effects', { overdrive:      parseInt(e.target.value) }));
 
-  delayTimeSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    delayTimeValue.textContent = value;
-    socket.emit('synth:set_effects', { delay_time: value });
-  });
+  tremoloDepthSlider.addEventListener('input',  (e) => { const v = parseInt(e.target.value); tremoloDepthValue.textContent  = v; _tTrD(v);   });
+  tremoloDepthSlider.addEventListener('change', (e) => socket.emit('synth:set_effects', { tremolo_depth:  parseInt(e.target.value) }));
 
-  delayFeedbackSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    delayFeedbackValue.textContent = value;
-    socket.emit('synth:set_effects', { delay_feedback: value });
-  });
+  tremoloRateSlider.addEventListener('input',   (e) => { const v = parseInt(e.target.value); tremoloRateValue.textContent   = v; _tTrR(v);   });
+  tremoloRateSlider.addEventListener('change',  (e) => socket.emit('synth:set_effects', { tremolo_rate:   parseInt(e.target.value) }));
 
-  reverbSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    reverbValue.textContent = value;
-    socket.emit('synth:set_effects', { reverb_wet: value });
-  });
+  delayTimeSlider.addEventListener('input',     (e) => { const v = parseInt(e.target.value); delayTimeValue.textContent     = v; _tDlyT(v);  });
+  delayTimeSlider.addEventListener('change',    (e) => socket.emit('synth:set_effects', { delay_time:     parseInt(e.target.value) }));
+
+  delayFeedbackSlider.addEventListener('input', (e) => { const v = parseInt(e.target.value); delayFeedbackValue.textContent = v; _tDlyF(v);  });
+  delayFeedbackSlider.addEventListener('change',(e) => socket.emit('synth:set_effects', { delay_feedback: parseInt(e.target.value) }));
+
+  reverbSlider.addEventListener('input',        (e) => { const v = parseInt(e.target.value); reverbValue.textContent        = v; _tRev(v);   });
+  reverbSlider.addEventListener('change',       (e) => socket.emit('synth:set_effects', { reverb_wet:     parseInt(e.target.value) }));
 
   // Frequency slider
   frequencySlider.addEventListener('input', (e) => {

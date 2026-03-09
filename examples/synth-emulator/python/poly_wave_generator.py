@@ -29,7 +29,7 @@ _BLOCK_DURATION = _BLOCK_SIZE / float(_SAMPLE_RATE)  # ~1.33 ms per block
 # Parameter smoothing — exponential moving average applied once per block.
 # Prevents audio clicks from discontinuous parameter changes via the UI or MIDI.
 # Time constant: tau = -_BLOCK_DURATION / ln(1 - alpha)
-_SMOOTH_ALPHA = 0.15        # ~8 ms  — for most effects
+_SMOOTH_ALPHA = 0.15  # ~8 ms  — for most effects
 _DELAY_SMOOTH_ALPHA = 0.05  # ~25 ms — for delay time (avoids sharp pitch jumps)
 
 # ADSR envelope stages
@@ -48,10 +48,14 @@ _ADSR_RELEASE = 4
 class _ReverbState:
     """Simple Schroeder reverb — 4 parallel comb filters + 2 series allpass filters."""
 
-    _COMB_DELAYS_MS = (29.7, 37.1, 41.1, 43.7)
-    _ALLPASS_DELAYS_MS = (5.0, 1.7)
+    # Freeverb-compatible parameters scaled to 48 kHz.
+    # 4 comb delays chosen from Freeverb's 8 (well-spread, no common factors).
+    # 4 allpass stages at Freeverb standard delays for proper diffusion.
+    # Larger _DAMP → warmer / less metallic tail.
+    _COMB_DELAYS_MS = (35.3, 33.7, 30.7, 26.9)   # ~1697, 1618, 1474, 1293 samples
+    _ALLPASS_DELAYS_MS = (12.6, 10.0, 7.7, 5.0)  # 605, 480, 370, 240 samples
     _FEEDBACK = 0.84
-    _DAMP = 0.2
+    _DAMP = 0.4  # was 0.2; higher value rolls off treble → warmer reverb tail
 
     def __init__(self, sample_rate: int) -> None:
         def _buf(ms):
