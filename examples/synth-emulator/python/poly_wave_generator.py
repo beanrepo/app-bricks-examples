@@ -38,6 +38,7 @@ _ADSR_RELEASE = 4
 # Schroeder reverb (4 comb + 2 allpass filters)
 # ---------------------------------------------------------------------------
 
+
 class _ReverbState:
     """Simple Schroeder reverb — 4 parallel comb filters + 2 series allpass filters."""
 
@@ -176,13 +177,13 @@ class PolyWaveGenerator:
 
         # Effects parameters
         self._cutoff = float(_SAMPLE_RATE) / 2.0  # fully open (Hz)
-        self._resonance = 0.0   # 0.0–1.0
-        self._overdrive = 0.0   # 0.0–1.0
+        self._resonance = 0.0  # 0.0–1.0
+        self._overdrive = 0.0  # 0.0–1.0
         self._tremolo_depth = 0.0  # 0.0–1.0
-        self._tremolo_rate = 5.0   # Hz
-        self._delay_time = 0.0     # seconds (0 = off)
-        self._delay_feedback = 0.5 # 0.0–0.95
-        self._reverb_wet = 0.0     # 0.0–1.0
+        self._tremolo_rate = 5.0  # Hz
+        self._delay_time = 0.0  # seconds (0 = off)
+        self._delay_feedback = 0.5  # 0.0–0.95
+        self._reverb_wet = 0.0  # 0.0–1.0
 
         # Filter state (biquad DF2T, recalculated when cutoff/resonance change)
         self._filter_b = np.array([1.0, 0.0, 0.0], dtype=np.float64)
@@ -535,15 +536,21 @@ class PolyWaveGenerator:
         sin_w0 = np.sin(w0)
         alpha = sin_w0 / (2.0 * q)
         a0 = 1.0 + alpha
-        self._filter_b = np.array([
-            (1.0 - cos_w0) / 2.0 / a0,
-            (1.0 - cos_w0) / a0,
-            (1.0 - cos_w0) / 2.0 / a0,
-        ], dtype=np.float64)
-        self._filter_a12 = np.array([
-            (-2.0 * cos_w0) / a0,
-            (1.0 - alpha) / a0,
-        ], dtype=np.float64)
+        self._filter_b = np.array(
+            [
+                (1.0 - cos_w0) / 2.0 / a0,
+                (1.0 - cos_w0) / a0,
+                (1.0 - cos_w0) / 2.0 / a0,
+            ],
+            dtype=np.float64,
+        )
+        self._filter_a12 = np.array(
+            [
+                (-2.0 * cos_w0) / a0,
+                (1.0 - alpha) / a0,
+            ],
+            dtype=np.float64,
+        )
         self._filter_dirty = False
 
     def _apply_filter(self, buf: np.ndarray) -> None:
@@ -744,7 +751,7 @@ class PolyWaveGenerator:
                 amp_start = v.amp_ramp_start + (v.amp_ramp_target - v.amp_ramp_start) * progress_start
                 amp_end = v.amp_ramp_start + (v.amp_ramp_target - v.amp_ramp_start) * progress_end
                 v.amp_ramp_elapsed += block_duration
-                finish_stage = (progress_end >= 1.0)
+                finish_stage = progress_end >= 1.0
 
         # ADSR stage auto-advance
         if finish_stage:

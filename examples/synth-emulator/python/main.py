@@ -22,23 +22,23 @@ wave_gen = PolyWaveGenerator(
 # Maps MIDI CC numbers to synth parameters
 cc_mapping = {
     # Default mappings (example for Akai MPK mini Plus)
-    "waveform": None,     # CC for waveform selection (0-3 = sine/square/sawtooth/triangle)
-    "attack": 1,          # CC1 = Modulation wheel → attack time
-    "decay": None,        # CC → decay time
-    "sustain": None,      # CC → sustain level
-    "release": 2,         # CC2 → release time
-    "glide": 3,           # CC3 → glide/portamento time
-    "frequency": None,    # CC for frequency control
-    "amplitude": 7,       # CC7 = Volume → amplitude
+    "waveform": None,  # CC for waveform selection (0-3 = sine/square/sawtooth/triangle)
+    "attack": 1,  # CC1 = Modulation wheel → attack time
+    "decay": None,  # CC → decay time
+    "sustain": None,  # CC → sustain level
+    "release": 2,  # CC2 → release time
+    "glide": 3,  # CC3 → glide/portamento time
+    "frequency": None,  # CC for frequency control
+    "amplitude": 7,  # CC7 = Volume → amplitude
     "master_volume": 11,  # CC11 = Expression → master volume
-    "cutoff": None,       # CC → filter cutoff
-    "resonance": None,    # CC → filter resonance
-    "overdrive": None,    # CC → overdrive amount
-    "tremolo_depth": None, # CC → tremolo depth
+    "cutoff": None,  # CC → filter cutoff
+    "resonance": None,  # CC → filter resonance
+    "overdrive": None,  # CC → overdrive amount
+    "tremolo_depth": None,  # CC → tremolo depth
     "tremolo_rate": None,  # CC → tremolo rate
-    "delay_time": None,   # CC → delay time
-    "delay_feedback": None, # CC → delay feedback
-    "reverb_wet": None,   # CC → reverb wet amount
+    "delay_time": None,  # CC → delay time
+    "delay_feedback": None,  # CC → delay feedback
+    "reverb_wet": None,  # CC → reverb wet amount
 }
 
 # --- MIDI Keyboard support (optional) -----------------------------------------------
@@ -231,6 +231,39 @@ def on_learn_cc(sid, data=None):
     # The next CC message will be mapped to this parameter
     # This is handled in the MIDI CC callback below
     ui.send_message("synth:cc_learn", {"param": param})
+
+
+def on_set_effects(sid, data=None):
+    """Update effects chain parameters."""
+    d = data or {}
+    changed = {}
+    if "cutoff" in d:
+        wave_gen.cutoff = float(d["cutoff"])
+        changed["cutoff"] = wave_gen.cutoff
+    if "resonance" in d:
+        wave_gen.resonance = float(d["resonance"]) / 100.0
+        changed["resonance"] = wave_gen.resonance * 100
+    if "overdrive" in d:
+        wave_gen.overdrive = float(d["overdrive"]) / 100.0
+        changed["overdrive"] = wave_gen.overdrive * 100
+    if "tremolo_depth" in d:
+        wave_gen.tremolo_depth = float(d["tremolo_depth"]) / 100.0
+        changed["tremolo_depth"] = wave_gen.tremolo_depth * 100
+    if "tremolo_rate" in d:
+        wave_gen.tremolo_rate = float(d["tremolo_rate"])
+        changed["tremolo_rate"] = wave_gen.tremolo_rate
+    if "delay_time" in d:
+        wave_gen.delay_time = float(d["delay_time"]) / 1000.0
+        changed["delay_time"] = wave_gen.delay_time * 1000
+    if "delay_feedback" in d:
+        wave_gen.delay_feedback = float(d["delay_feedback"]) / 100.0
+        changed["delay_feedback"] = wave_gen.delay_feedback * 100
+    if "reverb_wet" in d:
+        wave_gen.reverb_wet = float(d["reverb_wet"]) / 100.0
+        changed["reverb_wet"] = wave_gen.reverb_wet * 100
+    logger.debug(f"Effects updated: {changed}")
+    if changed:
+        ui.send_message("synth:state", {"effects": changed})
 
 
 # Register UI event handlers
