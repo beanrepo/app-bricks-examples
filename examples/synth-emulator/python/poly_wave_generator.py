@@ -26,6 +26,12 @@ _BLOCK_SIZE = max(32, min(_BUFFER_SIZE, _BUFFER_SIZE // 4))  # 64 frames
 _SAMPLE_RATE = Speaker.RATE_48K  # 48 000 Hz
 _BLOCK_DURATION = _BLOCK_SIZE / float(_SAMPLE_RATE)  # ~1.33 ms per block
 
+# Parameter smoothing — exponential moving average applied once per block.
+# Prevents audio clicks from discontinuous parameter changes via the UI or MIDI.
+# Time constant: tau = -_BLOCK_DURATION / ln(1 - alpha)
+_SMOOTH_ALPHA = 0.15        # ~8 ms  — for most effects
+_DELAY_SMOOTH_ALPHA = 0.05  # ~25 ms — for delay time (avoids sharp pitch jumps)
+
 # ADSR envelope stages
 _ADSR_IDLE = 0
 _ADSR_ATTACK = 1
@@ -50,37 +56,70 @@ class _ReverbState:
     def __init__(self, sample_rate: int) -> None:
         def _buf(ms):
             n = max(1, int(ms / 1000.0 * sample_rate))
-            return {"buf": np.zeros(n, dtype=np.float32), "pos": 0, "filt": 0.0}
+            # Store pre-computed delay in samples to avoid recomputing per block
+            return {"buf": np.zeros(n, dtype=np.float32), "pos": 0, "filt": 0.0, "delay": n}
 
         self._combs = [_buf(d) for d in self._COMB_DELAYS_MS]
         self._allpasses = [_buf(d) for d in self._ALLPASS_DELAYS_MS]
 
     def process(self, buf: np.ndarray, wet: float) -> None:
-        if wet == 0.0:
+        if wet < 1e-4:
             return
         n = len(buf)
         out = np.zeros(n, dtype=np.float32)
         fb = self._FEEDBACK
         damp = self._DAMP
+        nodamp = 1.0 - damp
+        nn = np.arange(n, dtype=np.int32)
+
+        # Parallel comb filters.
+        # All comb delays (>1400 samples) >> block_size (64), so ring-buffer
+        # reads and writes are fully vectorizable with numpy fancy indexing.
+        # Only the 1-pole LP damping filter remains sequential (64 iterations
+        # of pure arithmetic, no memory access overhead).
         for c in self._combs:
-            cb, size, pos, filt = c["buf"], len(c["buf"]), c["pos"], c["filt"]
+            cb = c["buf"]
+            buf_len = len(cb)
+            pos = c["pos"]
+            delay = c["delay"]
+
+            read_idx = (pos - delay + nn) % buf_len
+            write_idx = (pos + nn) % buf_len
+
+            echo = cb[read_idx].copy()  # vectorized ring-buffer read
+            out += echo
+
+            # 1-pole LP: y[n] = (1-d)*x[n] + d*y[n-1]  (d=0.2 → decays in ~7 samples)
+            filt = c["filt"]
+            filtered = np.empty(n, dtype=np.float32)
             for i in range(n):
-                output = cb[pos]
-                filt = output * (1.0 - damp) + filt * damp
-                cb[pos] = buf[i] + filt * fb
-                pos = (pos + 1) % size
-                out[i] += output
-            c["pos"] = pos
+                filt = nodamp * echo[i] + damp * filt
+                filtered[i] = filt
             c["filt"] = filt
+
+            cb[write_idx] = buf + filtered * np.float32(fb)  # vectorized write
+            c["pos"] = int((pos + n) % buf_len)
+
         out *= np.float32(0.25)
+
+        # Series allpass filters.
+        # All allpass delays (82 and 240 samples) > block_size (64), so there
+        # is no within-block feedback → fully vectorizable.
         for ap in self._allpasses:
-            ab, size, pos = ap["buf"], len(ap["buf"]), ap["pos"]
-            for i in range(n):
-                buf_val = ab[pos]
-                ab[pos] = out[i] + 0.5 * buf_val
-                out[i] = buf_val - 0.5 * out[i]
-                pos = (pos + 1) % size
-            ap["pos"] = pos
+            ab = ap["buf"]
+            buf_len = len(ab)
+            pos = ap["pos"]
+            delay = ap["delay"]
+
+            read_idx = (pos - delay + nn) % buf_len
+            write_idx = (pos + nn) % buf_len
+
+            v = ab[read_idx].copy()
+            tmp = out.copy()
+            ab[write_idx] = tmp + np.float32(0.5) * v
+            out[:] = v - np.float32(0.5) * tmp
+            ap["pos"] = int((pos + n) % buf_len)
+
         buf *= np.float32(1.0 - wet)
         buf += out * np.float32(wet)
 
@@ -201,6 +240,19 @@ class PolyWaveGenerator:
         # Reverb
         self._reverb = _ReverbState(_SAMPLE_RATE)
 
+        # Smoothed (per-block) copies of effect parameters.
+        # Updated each block toward the "real" target values via EMA.
+        # Using separate _cur vars means the audio thread reads a stable,
+        # gradually-changing value even while the UI thread writes rapidly.
+        self._cutoff_cur = self._cutoff
+        self._resonance_cur = self._resonance
+        self._overdrive_cur = self._overdrive
+        self._tremolo_depth_cur = self._tremolo_depth
+        self._tremolo_rate_cur = self._tremolo_rate
+        self._delay_time_cur = self._delay_time
+        self._delay_feedback_cur = self._delay_feedback
+        self._reverb_wet_cur = self._reverb_wet
+
         # Single speaker shared by all voices
         self._speaker = ALSASpeaker(
             device=Speaker.USB_SPEAKER_1,
@@ -224,6 +276,33 @@ class PolyWaveGenerator:
 
         self._two_pi = np.float32(2.0 * np.pi)
         self._running = threading.Event()
+
+    def _step_smoothing(self) -> None:
+        """Advance all smoothed effect parameters one block toward their targets.
+
+        Called once per audio block before synthesis.  Uses an exponential
+        moving average so that rapid UI updates (e.g. fast slider drags) are
+        low-pass filtered before reaching the DSP code, eliminating the
+        discontinuous per-block jumps that cause audio clicks.
+        """
+        a = _SMOOTH_ALPHA
+
+        self._overdrive_cur += a * (self._overdrive - self._overdrive_cur)
+
+        new_cutoff = self._cutoff_cur + a * (self._cutoff - self._cutoff_cur)
+        new_res = self._resonance_cur + a * (self._resonance - self._resonance_cur)
+        if new_cutoff != self._cutoff_cur or new_res != self._resonance_cur:
+            self._filter_dirty = True
+        self._cutoff_cur = new_cutoff
+        self._resonance_cur = new_res
+
+        self._tremolo_depth_cur += a * (self._tremolo_depth - self._tremolo_depth_cur)
+        self._tremolo_rate_cur += a * (self._tremolo_rate - self._tremolo_rate_cur)
+        self._reverb_wet_cur += a * (self._reverb_wet - self._reverb_wet_cur)
+
+        da = _DELAY_SMOOTH_ALPHA
+        self._delay_time_cur += da * (self._delay_time - self._delay_time_cur)
+        self._delay_feedback_cur += a * (self._delay_feedback - self._delay_feedback_cur)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -529,8 +608,8 @@ class PolyWaveGenerator:
     # ------------------------------------------------------------------
 
     def _update_filter_coeffs(self) -> None:
-        fc = max(20.0, min(self._cutoff, float(_SAMPLE_RATE) / 2.0 - 1.0))
-        q = 0.707 + self._resonance * 9.293  # Butterworth (0.707) → resonant (10.0)
+        fc = max(20.0, min(self._cutoff_cur, float(_SAMPLE_RATE) / 2.0 - 1.0))
+        q = 0.707 + self._resonance_cur * 9.293  # Butterworth (0.707) → resonant (10.0)
         w0 = 2.0 * np.pi * fc / float(_SAMPLE_RATE)
         cos_w0 = np.cos(w0)
         sin_w0 = np.sin(w0)
@@ -554,7 +633,7 @@ class PolyWaveGenerator:
         self._filter_dirty = False
 
     def _apply_filter(self, buf: np.ndarray) -> None:
-        if self._cutoff >= float(_SAMPLE_RATE) / 2.0 - 100.0 and self._resonance == 0.0:
+        if self._cutoff_cur >= float(_SAMPLE_RATE) / 2.0 - 100.0 and self._resonance_cur < 1e-4:
             return  # filter fully open — skip
         if self._filter_dirty:
             self._update_filter_coeffs()
@@ -571,22 +650,22 @@ class PolyWaveGenerator:
         self._filter_z[1] = z2
 
     def _apply_overdrive(self, buf: np.ndarray) -> None:
-        if self._overdrive == 0.0:
+        if self._overdrive_cur < 1e-4:
             return
-        drive = np.float32(1.0 + self._overdrive * 9.0)  # 1× → 10×
+        drive = np.float32(1.0 + self._overdrive_cur * 9.0)  # 1× → 10×
         np.multiply(buf, drive, out=buf)
         np.tanh(buf, out=buf)
         # Compensate output level so unity gain at low drive
         np.multiply(buf, np.float32(1.0 / float(np.tanh(drive))), out=buf)
 
     def _apply_tremolo(self, buf: np.ndarray) -> None:
-        if self._tremolo_depth == 0.0:
+        if self._tremolo_depth_cur < 1e-4:
             return
         n = len(buf)
-        inc = np.float32(2.0 * np.pi * self._tremolo_rate / float(_SAMPLE_RATE))
+        inc = np.float32(2.0 * np.pi * self._tremolo_rate_cur / float(_SAMPLE_RATE))
         lfo = np.arange(n, dtype=np.float32) * inc + np.float32(self._tremolo_phase)
         np.sin(lfo, out=lfo)
-        depth = np.float32(self._tremolo_depth)
+        depth = np.float32(self._tremolo_depth_cur)
         # LFO modulates amplitude: 1.0 at top, (1 - depth) at bottom
         np.multiply(lfo, depth * np.float32(0.5), out=lfo)
         np.add(lfo, np.float32(1.0) - depth * np.float32(0.5), out=lfo)
@@ -594,22 +673,29 @@ class PolyWaveGenerator:
         self._tremolo_phase = float((self._tremolo_phase + n * inc) % (2.0 * np.pi))
 
     def _apply_delay(self, buf: np.ndarray) -> None:
-        if self._delay_time == 0.0:
+        delay_time = self._delay_time_cur
+        if delay_time < 1e-6:
             return
-        delay_samples = min(int(self._delay_time * _SAMPLE_RATE), len(self._delay_buf) - 1)
-        if delay_samples == 0:
+        delay_samples = int(delay_time * _SAMPLE_RATE)
+        if delay_samples < 1:
             return
+        n = len(buf)
         db = self._delay_buf
         buf_len = len(db)
         pos = self._delay_pos
-        fb = np.float32(self._delay_feedback)
-        for i in range(len(buf)):
-            read_pos = (pos - delay_samples) % buf_len
-            echo = db[read_pos]
-            db[pos] = buf[i] + echo * fb
-            buf[i] += echo
-            pos = (pos + 1) % buf_len
-        self._delay_pos = pos
+        fb = np.float32(self._delay_feedback_cur)
+
+        # Vectorized ring-buffer read/write — no Python loop.
+        # Since delay_samples can be < n (e.g. very short delays), we use
+        # modulo indexing which handles all cases correctly.
+        nn = np.arange(n, dtype=np.int32)
+        read_idx = (pos - delay_samples + nn) % buf_len
+        write_idx = (pos + nn) % buf_len
+
+        echo = db[read_idx]
+        db[write_idx] = buf + echo * fb
+        buf += echo
+        self._delay_pos = int((pos + n) % buf_len)
 
     # ------------------------------------------------------------------
     # Audio synthesis
@@ -617,6 +703,7 @@ class PolyWaveGenerator:
 
     def _generate_poly_block(self) -> np.ndarray:
         """Sum all active voices into one audio block."""
+        self._step_smoothing()
         mix = self._buf_mix
         mix.fill(0.0)
 
@@ -642,7 +729,7 @@ class PolyWaveGenerator:
             self._apply_filter(mix)
             self._apply_tremolo(mix)
             self._apply_delay(mix)
-            self._reverb.process(mix, self._reverb_wet)
+            self._reverb.process(mix, self._reverb_wet_cur)
 
         return mix
 
