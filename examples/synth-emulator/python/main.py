@@ -22,13 +22,23 @@ wave_gen = PolyWaveGenerator(
 # Maps MIDI CC numbers to synth parameters
 cc_mapping = {
     # Default mappings (example for Akai MPK mini Plus)
-    "waveform": None,  # CC for waveform selection (0-3 = sine/square/sawtooth/triangle)
-    "attack": 1,  # CC1 = Modulation wheel → attack time
-    "release": 2,  # CC2 → release time
-    "glide": 3,  # CC3 → glide/portamento time
-    "frequency": None,  # CC for frequency control
-    "amplitude": 7,  # CC7 = Volume → amplitude
+    "waveform": None,     # CC for waveform selection (0-3 = sine/square/sawtooth/triangle)
+    "attack": 1,          # CC1 = Modulation wheel → attack time
+    "decay": None,        # CC → decay time
+    "sustain": None,      # CC → sustain level
+    "release": 2,         # CC2 → release time
+    "glide": 3,           # CC3 → glide/portamento time
+    "frequency": None,    # CC for frequency control
+    "amplitude": 7,       # CC7 = Volume → amplitude
     "master_volume": 11,  # CC11 = Expression → master volume
+    "cutoff": None,       # CC → filter cutoff
+    "resonance": None,    # CC → filter resonance
+    "overdrive": None,    # CC → overdrive amount
+    "tremolo_depth": None, # CC → tremolo depth
+    "tremolo_rate": None,  # CC → tremolo rate
+    "delay_time": None,   # CC → delay time
+    "delay_feedback": None, # CC → delay feedback
+    "reverb_wet": None,   # CC → reverb wet amount
 }
 
 # --- MIDI Keyboard support (optional) -----------------------------------------------
@@ -62,9 +72,21 @@ def on_connect(sid, data=None):
             "volume": state["volume"],
             "voices": state["voices"],
             "envelope": {
-                "attack": wave_gen.attack,
-                "release": wave_gen.release,
-                "glide": wave_gen.glide,
+                "attack": wave_gen.attack * 1000,
+                "decay": wave_gen.decay * 1000,
+                "sustain": wave_gen.sustain * 100,
+                "release": wave_gen.release * 1000,
+                "glide": wave_gen.glide * 1000,
+            },
+            "effects": {
+                "cutoff": state["cutoff"],
+                "resonance": state["resonance"] * 100,
+                "overdrive": state["overdrive"] * 100,
+                "tremolo_depth": state["tremolo_depth"] * 100,
+                "tremolo_rate": state["tremolo_rate"],
+                "delay_time": state["delay_time"] * 1000,
+                "delay_feedback": state["delay_feedback"] * 100,
+                "reverb_wet": state["reverb_wet"] * 100,
             },
         },
         room=sid,
@@ -217,6 +239,7 @@ ui.on_message("synth:set_frequency", on_set_frequency)
 ui.on_message("synth:set_amplitude", on_set_amplitude)
 ui.on_message("synth:set_waveform", on_set_waveform)
 ui.on_message("synth:set_envelope", on_set_envelope)
+ui.on_message("synth:set_effects", on_set_effects)
 ui.on_message("synth:set_volume", on_set_volume)
 ui.on_message("synth:set_voices", on_set_voices)
 ui.on_message("synth:note_on", on_note_on)
@@ -288,6 +311,16 @@ def on_midi_cc(control, value):
                 wave_gen.attack = attack_ms / 1000.0
                 ui.send_message("synth:state", {"attack": attack_ms, "envelope": {"attack": attack_ms}, "source": "midi"})
 
+            elif param == "decay":
+                decay_ms = (value / 127.0) * 1000
+                wave_gen.decay = decay_ms / 1000.0
+                ui.send_message("synth:state", {"envelope": {"decay": decay_ms}, "source": "midi"})
+
+            elif param == "sustain":
+                sustain_pct = (value / 127.0) * 100
+                wave_gen.sustain = sustain_pct / 100.0
+                ui.send_message("synth:state", {"envelope": {"sustain": sustain_pct}, "source": "midi"})
+
             elif param == "release":
                 release_ms = (value / 127.0) * 1000  # 0-1000ms
                 wave_gen.release = release_ms / 1000.0
@@ -310,10 +343,49 @@ def on_midi_cc(control, value):
                 ui.send_message("synth:state", {"volume": volume, "source": "midi"})
 
             elif param == "frequency":
-                # Map CC value to frequency range (e.g., 100-2000 Hz)
                 freq = 100 + (value / 127.0) * 1900
                 wave_gen.frequency = freq
                 ui.send_message("synth:state", {"frequency": freq, "source": "midi"})
+
+            elif param == "cutoff":
+                cutoff = 20.0 + (value / 127.0) * (20000.0 - 20.0)
+                wave_gen.cutoff = cutoff
+                ui.send_message("synth:state", {"effects": {"cutoff": cutoff}, "source": "midi"})
+
+            elif param == "resonance":
+                res_pct = (value / 127.0) * 100
+                wave_gen.resonance = res_pct / 100.0
+                ui.send_message("synth:state", {"effects": {"resonance": res_pct}, "source": "midi"})
+
+            elif param == "overdrive":
+                od_pct = (value / 127.0) * 100
+                wave_gen.overdrive = od_pct / 100.0
+                ui.send_message("synth:state", {"effects": {"overdrive": od_pct}, "source": "midi"})
+
+            elif param == "tremolo_depth":
+                td_pct = (value / 127.0) * 100
+                wave_gen.tremolo_depth = td_pct / 100.0
+                ui.send_message("synth:state", {"effects": {"tremolo_depth": td_pct}, "source": "midi"})
+
+            elif param == "tremolo_rate":
+                rate = 0.1 + (value / 127.0) * 19.9  # 0.1–20 Hz
+                wave_gen.tremolo_rate = rate
+                ui.send_message("synth:state", {"effects": {"tremolo_rate": rate}, "source": "midi"})
+
+            elif param == "delay_time":
+                dt_ms = (value / 127.0) * 1000
+                wave_gen.delay_time = dt_ms / 1000.0
+                ui.send_message("synth:state", {"effects": {"delay_time": dt_ms}, "source": "midi"})
+
+            elif param == "delay_feedback":
+                fb_pct = (value / 127.0) * 95  # max 95%
+                wave_gen.delay_feedback = fb_pct / 100.0
+                ui.send_message("synth:state", {"effects": {"delay_feedback": fb_pct}, "source": "midi"})
+
+            elif param == "reverb_wet":
+                rv_pct = (value / 127.0) * 100
+                wave_gen.reverb_wet = rv_pct / 100.0
+                ui.send_message("synth:state", {"effects": {"reverb_wet": rv_pct}, "source": "midi"})
 
     # Also broadcast raw CC for monitoring/learning
     ui.send_message("synth:midi_cc", {"control": control, "value": value})

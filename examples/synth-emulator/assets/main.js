@@ -11,6 +11,8 @@
   const waveformBtns = document.querySelectorAll('.waveform-btn');
   const voicesBtns = document.querySelectorAll('.voices-btn');
   const attackSlider = document.getElementById('attack-slider');
+  const decaySlider = document.getElementById('decay-slider');
+  const sustainSlider = document.getElementById('sustain-slider');
   const releaseSlider = document.getElementById('release-slider');
   const glideSlider = document.getElementById('glide-slider');
   const frequencySlider = document.getElementById('frequency-slider');
@@ -18,11 +20,32 @@
   const volumeSlider = document.getElementById('volume-slider');
 
   const attackValue = document.getElementById('attack-value');
+  const decayValue = document.getElementById('decay-value');
+  const sustainValue = document.getElementById('sustain-value');
   const releaseValue = document.getElementById('release-value');
   const glideValue = document.getElementById('glide-value');
   const frequencyValue = document.getElementById('frequency-value');
   const amplitudeValue = document.getElementById('amplitude-value');
   const volumeValue = document.getElementById('volume-value');
+
+  // Effects sliders
+  const cutoffSlider = document.getElementById('cutoff-slider');
+  const resonanceSlider = document.getElementById('resonance-slider');
+  const overdriveSlider = document.getElementById('overdrive-slider');
+  const tremoloDepthSlider = document.getElementById('tremolo-depth-slider');
+  const tremoloRateSlider = document.getElementById('tremolo-rate-slider');
+  const delayTimeSlider = document.getElementById('delay-time-slider');
+  const delayFeedbackSlider = document.getElementById('delay-feedback-slider');
+  const reverbSlider = document.getElementById('reverb-slider');
+
+  const cutoffValue = document.getElementById('cutoff-value');
+  const resonanceValue = document.getElementById('resonance-value');
+  const overdriveValue = document.getElementById('overdrive-value');
+  const tremoloDepthValue = document.getElementById('tremolo-depth-value');
+  const tremoloRateValue = document.getElementById('tremolo-rate-value');
+  const delayTimeValue = document.getElementById('delay-time-value');
+  const delayFeedbackValue = document.getElementById('delay-feedback-value');
+  const reverbValue = document.getElementById('reverb-value');
 
   const keyboardKeys = document.querySelectorAll('.key');
   const midiStatus = document.getElementById('midi-status');
@@ -104,25 +127,37 @@
     if (data.envelope) {
       if (data.envelope.attack !== undefined && data.attack === undefined) {
         const attack = Math.round(data.envelope.attack);
-        if (!data.source) {
-          attackSlider.value = attack;
-          attackValue.textContent = attack;
-        }
+        if (!data.source) { attackSlider.value = attack; attackValue.textContent = attack; }
+      }
+      if (data.envelope.decay !== undefined) {
+        const decay = Math.round(data.envelope.decay);
+        decaySlider.value = decay; decayValue.textContent = decay;
+      }
+      if (data.envelope.sustain !== undefined) {
+        const sustain = Math.round(data.envelope.sustain);
+        sustainSlider.value = sustain; sustainValue.textContent = sustain;
       }
       if (data.envelope.release !== undefined && data.release === undefined) {
         const release = Math.round(data.envelope.release);
-        if (!data.source) {
-          releaseSlider.value = release;
-          releaseValue.textContent = release;
-        }
+        if (!data.source) { releaseSlider.value = release; releaseValue.textContent = release; }
       }
       if (data.envelope.glide !== undefined && data.glide === undefined) {
         const glide = Math.round(data.envelope.glide);
-        if (!data.source) {
-          glideSlider.value = glide;
-          glideValue.textContent = glide;
-        }
+        if (!data.source) { glideSlider.value = glide; glideValue.textContent = glide; }
       }
+    }
+
+    // Effects state
+    if (data.effects) {
+      const e = data.effects;
+      if (e.cutoff !== undefined) { cutoffSlider.value = Math.round(e.cutoff); cutoffValue.textContent = Math.round(e.cutoff); }
+      if (e.resonance !== undefined) { resonanceSlider.value = Math.round(e.resonance); resonanceValue.textContent = Math.round(e.resonance); }
+      if (e.overdrive !== undefined) { overdriveSlider.value = Math.round(e.overdrive); overdriveValue.textContent = Math.round(e.overdrive); }
+      if (e.tremolo_depth !== undefined) { tremoloDepthSlider.value = Math.round(e.tremolo_depth); tremoloDepthValue.textContent = Math.round(e.tremolo_depth); }
+      if (e.tremolo_rate !== undefined) { tremoloRateSlider.value = Math.round(e.tremolo_rate); tremoloRateValue.textContent = Math.round(e.tremolo_rate); }
+      if (e.delay_time !== undefined) { delayTimeSlider.value = Math.round(e.delay_time); delayTimeValue.textContent = Math.round(e.delay_time); }
+      if (e.delay_feedback !== undefined) { delayFeedbackSlider.value = Math.round(e.delay_feedback); delayFeedbackValue.textContent = Math.round(e.delay_feedback); }
+      if (e.reverb_wet !== undefined) { reverbSlider.value = Math.round(e.reverb_wet); reverbValue.textContent = Math.round(e.reverb_wet); }
     }
 
     // Show MIDI indicator if update came from MIDI
@@ -212,6 +247,18 @@
     socket.emit('synth:set_envelope', { attack: value });
   });
 
+  decaySlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    decayValue.textContent = value;
+    socket.emit('synth:set_envelope', { decay: value });
+  });
+
+  sustainSlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    sustainValue.textContent = value;
+    socket.emit('synth:set_envelope', { sustain: value });
+  });
+
   releaseSlider.addEventListener('input', (e) => {
     const value = parseInt(e.target.value);
     releaseValue.textContent = value;
@@ -222,6 +269,55 @@
     const value = parseInt(e.target.value);
     glideValue.textContent = value;
     socket.emit('synth:set_envelope', { glide: value });
+  });
+
+  // Effects sliders
+  cutoffSlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    cutoffValue.textContent = value;
+    socket.emit('synth:set_effects', { cutoff: value });
+  });
+
+  resonanceSlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    resonanceValue.textContent = value;
+    socket.emit('synth:set_effects', { resonance: value });
+  });
+
+  overdriveSlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    overdriveValue.textContent = value;
+    socket.emit('synth:set_effects', { overdrive: value });
+  });
+
+  tremoloDepthSlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    tremoloDepthValue.textContent = value;
+    socket.emit('synth:set_effects', { tremolo_depth: value });
+  });
+
+  tremoloRateSlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    tremoloRateValue.textContent = value;
+    socket.emit('synth:set_effects', { tremolo_rate: value });
+  });
+
+  delayTimeSlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    delayTimeValue.textContent = value;
+    socket.emit('synth:set_effects', { delay_time: value });
+  });
+
+  delayFeedbackSlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    delayFeedbackValue.textContent = value;
+    socket.emit('synth:set_effects', { delay_feedback: value });
+  });
+
+  reverbSlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    reverbValue.textContent = value;
+    socket.emit('synth:set_effects', { reverb_wet: value });
   });
 
   // Frequency slider

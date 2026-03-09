@@ -95,6 +95,14 @@ body {
   color: #2C353A;
 }
 
+.control-group label.section-label {
+  font-size: 1em;
+  color: #008184;
+  border-bottom: 1px solid #DAE3E3;
+  padding-bottom: 4px;
+  margin-bottom: 10px;
+}
+
 /* Two-column grid for synth controls */
 .controls-grid {
   display: grid;

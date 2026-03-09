@@ -54,6 +54,18 @@ SPDX-License-Identifier: MPL-2.0
           </div>
 
           <div class="control-group">
+            <label>Decay (ms)</label>
+            <input type="range" id="decay-slider" min="0" max="1000" value="100" step="1">
+            <span id="decay-value">100</span> ms
+          </div>
+
+          <div class="control-group">
+            <label>Sustain (%)</label>
+            <input type="range" id="sustain-slider" min="0" max="100" value="80" step="1">
+            <span id="sustain-value">80</span> %
+          </div>
+
+          <div class="control-group">
             <label>Release (ms)</label>
             <input type="range" id="release-slider" min="0" max="1000" value="100" step="1">
             <span id="release-value">100</span> ms
@@ -81,6 +93,60 @@ SPDX-License-Identifier: MPL-2.0
             <label>Master Volume</label>
             <input type="range" id="volume-slider" min="0" max="100" value="80" step="1">
             <span id="volume-value">80</span> %
+          </div>
+        </div>
+
+        <!-- Effects Section -->
+        <div class="control-group">
+          <label class="section-label">Effects</label>
+          <div class="controls-grid">
+            <div class="control-group">
+              <label>Cutoff (Hz)</label>
+              <input type="range" id="cutoff-slider" min="20" max="20000" value="20000" step="10">
+              <span id="cutoff-value">20000</span> Hz
+            </div>
+
+            <div class="control-group">
+              <label>Resonance (%)</label>
+              <input type="range" id="resonance-slider" min="0" max="100" value="0" step="1">
+              <span id="resonance-value">0</span> %
+            </div>
+
+            <div class="control-group">
+              <label>Overdrive (%)</label>
+              <input type="range" id="overdrive-slider" min="0" max="100" value="0" step="1">
+              <span id="overdrive-value">0</span> %
+            </div>
+
+            <div class="control-group">
+              <label>Tremolo Depth (%)</label>
+              <input type="range" id="tremolo-depth-slider" min="0" max="100" value="0" step="1">
+              <span id="tremolo-depth-value">0</span> %
+            </div>
+
+            <div class="control-group">
+              <label>Tremolo Rate (Hz)</label>
+              <input type="range" id="tremolo-rate-slider" min="1" max="20" value="5" step="1">
+              <span id="tremolo-rate-value">5</span> Hz
+            </div>
+
+            <div class="control-group">
+              <label>Delay Time (ms)</label>
+              <input type="range" id="delay-time-slider" min="0" max="1000" value="0" step="10">
+              <span id="delay-time-value">0</span> ms
+            </div>
+
+            <div class="control-group">
+              <label>Delay Feedback (%)</label>
+              <input type="range" id="delay-feedback-slider" min="0" max="95" value="50" step="1">
+              <span id="delay-feedback-value">50</span> %
+            </div>
+
+            <div class="control-group">
+              <label>Reverb (%)</label>
+              <input type="range" id="reverb-slider" min="0" max="100" value="0" step="1">
+              <span id="reverb-value">0</span> %
+            </div>
           </div>
         </div>
 
@@ -133,6 +199,20 @@ SPDX-License-Identifier: MPL-2.0
             </div>
 
             <div class="mapping-row">
+              <span class="mapping-label">Decay:</span>
+              <span class="mapping-cc" id="map-decay">Not mapped</span>
+              <button class="learn-btn" data-param="decay">Learn</button>
+              <button class="clear-btn" data-param="decay">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Sustain:</span>
+              <span class="mapping-cc" id="map-sustain">Not mapped</span>
+              <button class="learn-btn" data-param="sustain">Learn</button>
+              <button class="clear-btn" data-param="sustain">Clear</button>
+            </div>
+
+            <div class="mapping-row">
               <span class="mapping-label">Release:</span>
               <span class="mapping-cc" id="map-release">CC2</span>
               <button class="learn-btn" data-param="release">Learn</button>
@@ -165,6 +245,62 @@ SPDX-License-Identifier: MPL-2.0
               <span class="mapping-cc" id="map-master_volume">CC11</span>
               <button class="learn-btn" data-param="master_volume">Learn</button>
               <button class="clear-btn" data-param="master_volume">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Cutoff:</span>
+              <span class="mapping-cc" id="map-cutoff">Not mapped</span>
+              <button class="learn-btn" data-param="cutoff">Learn</button>
+              <button class="clear-btn" data-param="cutoff">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Resonance:</span>
+              <span class="mapping-cc" id="map-resonance">Not mapped</span>
+              <button class="learn-btn" data-param="resonance">Learn</button>
+              <button class="clear-btn" data-param="resonance">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Overdrive:</span>
+              <span class="mapping-cc" id="map-overdrive">Not mapped</span>
+              <button class="learn-btn" data-param="overdrive">Learn</button>
+              <button class="clear-btn" data-param="overdrive">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Tremolo Depth:</span>
+              <span class="mapping-cc" id="map-tremolo_depth">Not mapped</span>
+              <button class="learn-btn" data-param="tremolo_depth">Learn</button>
+              <button class="clear-btn" data-param="tremolo_depth">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Tremolo Rate:</span>
+              <span class="mapping-cc" id="map-tremolo_rate">Not mapped</span>
+              <button class="learn-btn" data-param="tremolo_rate">Learn</button>
+              <button class="clear-btn" data-param="tremolo_rate">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Delay Time:</span>
+              <span class="mapping-cc" id="map-delay_time">Not mapped</span>
+              <button class="learn-btn" data-param="delay_time">Learn</button>
+              <button class="clear-btn" data-param="delay_time">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Delay Feedback:</span>
+              <span class="mapping-cc" id="map-delay_feedback">Not mapped</span>
+              <button class="learn-btn" data-param="delay_feedback">Learn</button>
+              <button class="clear-btn" data-param="delay_feedback">Clear</button>
+            </div>
+
+            <div class="mapping-row">
+              <span class="mapping-label">Reverb:</span>
+              <span class="mapping-cc" id="map-reverb_wet">Not mapped</span>
+              <button class="learn-btn" data-param="reverb_wet">Learn</button>
+              <button class="clear-btn" data-param="reverb_wet">Clear</button>
             </div>
           </div>
         </div>
