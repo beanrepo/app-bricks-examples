@@ -377,6 +377,7 @@ input[type="range"]::-moz-range-thumb:hover {
   color: #2C353A;
   text-align: center;
   min-width: 60px;
+  white-space: nowrap;
 }
 
 .learn-btn,

@@ -3,12 +3,13 @@
 # SPDX-License-Identifier: MPL-2.0
 
 from arduino.app_bricks.web_ui import WebUI
-from arduino.app_utils import App, Logger
+from arduino.app_utils import App, Logger, Bridge
 from midi_keyboard import MIDIKeyboard
 from poly_wave_generator import PolyWaveGenerator
 import logging
 
 logger = Logger("synth-emulator", logging.DEBUG)
+
 
 # Polyphonic wave generator (1–3 voices sharing a single speaker stream)
 wave_gen = PolyWaveGenerator(
@@ -59,6 +60,13 @@ except Exception as e:
 # --- Web UI and event handlers -----------------------------------------------------
 ui = WebUI()
 
+def _sensor_ui_state() -> dict:
+    return {
+        "distance_cm": None if _sensor_distance_cm < 0.0 else round(_sensor_distance_cm, 1),
+        "proximity_pct": round(_sensor_proximity * 100.0, 1),
+        "sensor_bend_factor": round(_sensor_bend_factor, 4),
+        "total_bend_factor": round(_midi_bend_factor * _sensor_bend_factor, 4),
+    }
 
 def on_connect(sid, data=None):
     """Send current synth state to newly connected client."""
@@ -71,6 +79,7 @@ def on_connect(sid, data=None):
             "waveform": state["wave_type"],
             "volume": state["volume"],
             "voices": state["voices"],
+            "sensor": _sensor_ui_state(),
             "envelope": {
                 "attack": wave_gen.attack * 1000,
                 "decay": wave_gen.decay * 1000,
@@ -329,6 +338,90 @@ _ui_dispatch_thread = _threading.Thread(
 )
 _ui_dispatch_thread.start()
 
+# --- Air pitch bend from ultrasonic sensor ----------------------------------
+
+AIR_BEND_RANGE_SEMITONES = 2.0   # prova iniziale: +/- 2 semitoni
+AIR_BEND_DEADZONE = 0.08         # zona neutra al centro per evitare jitter
+
+_midi_bend_factor = 1.0
+_sensor_bend_factor = 1.0
+_sensor_distance_cm = -1.0
+_sensor_proximity = 0.5
+
+
+def _bend_factor_from_proximity(proximity: float) -> float:
+    """
+    proximity:
+      0.0 = mano lontana
+      1.0 = mano vicina
+
+    Mappatura:
+      centro (~0.5) = nessun bend
+      vicino = pitch up
+      lontano = pitch down
+    """
+    p = max(0.0, min(1.0, float(proximity)))
+    centered = p - 0.5
+
+    if abs(centered) <= AIR_BEND_DEADZONE:
+        return 1.0
+
+    span = 0.5 - AIR_BEND_DEADZONE
+    norm = (abs(centered) - AIR_BEND_DEADZONE) / span
+    semitones = norm * AIR_BEND_RANGE_SEMITONES
+
+    if centered < 0.0:
+        semitones = -semitones
+
+    return 2.0 ** (semitones / 12.0)
+
+
+def _apply_combined_bend(source: str) -> None:
+    """
+    Combina pitch bend MIDI + air bend del sensore.
+    """
+    total_bend = _midi_bend_factor * _sensor_bend_factor
+    wave_gen.set_pitch_bend(total_bend)
+
+    payload = {
+        "sensor": _sensor_ui_state(),
+        "source": source,
+    }
+
+    if wave_gen.has_active_notes:
+        payload["frequency"] = wave_gen.frequency
+
+    _ui_queue.put(("synth:state", payload))
+
+
+def set_sensor(distance_cm, proximity):
+    """
+    RPC chiamata dallo sketch MCU.
+    distance_cm < 0 => nessuna eco valida, bend neutro.
+    """
+    global _sensor_distance_cm, _sensor_proximity, _sensor_bend_factor
+
+    try:
+        _sensor_distance_cm = float(distance_cm)
+        _sensor_proximity = max(0.0, min(1.0, float(proximity)))
+    except Exception as e:
+        logger.warning(f"Invalid sensor payload: {e}")
+        return False
+
+    if _sensor_distance_cm < 0.0:
+        _sensor_bend_factor = 1.0
+        _apply_combined_bend("sensor")
+        return True
+
+    _sensor_bend_factor = _bend_factor_from_proximity(_sensor_proximity)
+    _apply_combined_bend("sensor")
+
+    logger.debug(
+        f"sensor distance={_sensor_distance_cm:.1f}cm "
+        f"proximity={_sensor_proximity:.3f} "
+        f"sensor_bend={_sensor_bend_factor:.4f}"
+    )
+    return True
 
 def on_midi_note_on(note, velocity):
     """Handle MIDI note on."""
@@ -348,7 +441,7 @@ def on_midi_note_off(note, velocity):
 
 def on_midi_pitch_bend(value):
     """Handle pitch bend (±2 semitones). Throttled to max every 25 ms."""
-    global _last_pitch_bend_time
+    global _last_pitch_bend_time, _midi_bend_factor
 
     current_time = time.perf_counter()
     if (current_time - _last_pitch_bend_time) < _PITCH_BEND_THROTTLE_SEC:
@@ -357,10 +450,15 @@ def on_midi_pitch_bend(value):
 
     normalized_bend = (value - 8192) / 8192.0
     bend_semitones = normalized_bend * 2.0
-    bend_factor = 2.0 ** (bend_semitones / 12.0)
-    wave_gen.set_pitch_bend(bend_factor)
-    logger.debug(f"MIDI Pitch bend: {value} (norm={normalized_bend:.2f}) → factor={bend_factor:.4f}")
-    _ui_queue.put(("synth:state", {"frequency": wave_gen.frequency, "source": "midi"}))
+    _midi_bend_factor = 2.0 ** (bend_semitones / 12.0)
+
+    _apply_combined_bend("midi")
+
+    logger.debug(
+        f"MIDI Pitch bend: {value} "
+        f"(norm={normalized_bend:.2f}) "
+        f"-> midi_factor={_midi_bend_factor:.4f}"
+    )
 
 
 def on_midi_cc(control, value):
@@ -559,6 +657,8 @@ import threading
 hotplug_thread = threading.Thread(target=midi_hotplug_monitor, daemon=True, name="MIDI-Hotplug-Monitor")
 hotplug_thread.start()
 logger.info("MIDI hotplug monitor started")
+
+Bridge.provide("set_sensor", set_sensor)
 
 # Run the app
 App.run()

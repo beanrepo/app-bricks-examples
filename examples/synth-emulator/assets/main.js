@@ -27,6 +27,10 @@
   const frequencyValue = document.getElementById('frequency-value');
   const amplitudeValue = document.getElementById('amplitude-value');
   const volumeValue = document.getElementById('volume-value');
+  const sensorDistance = document.getElementById('sensor-distance');
+  const sensorProximity = document.getElementById('sensor-proximity');
+  const sensorBend = document.getElementById('sensor-bend');
+  const sensorTotalBend = document.getElementById('sensor-total-bend');
 
   // Effects sliders
   const cutoffSlider = document.getElementById('cutoff-slider');
@@ -110,6 +114,30 @@
     if (data.voices !== undefined) {
       statusVoices.textContent = data.voices;
       setActiveVoices(data.voices);
+    }
+
+    if (data.sensor) {
+      const s = data.sensor;
+    
+      sensorDistance.textContent =
+        s.distance_cm !== null && s.distance_cm !== undefined
+          ? `${s.distance_cm.toFixed(1)} cm`
+          : '--';
+    
+      sensorProximity.textContent =
+        s.proximity_pct !== null && s.proximity_pct !== undefined
+          ? `${s.proximity_pct.toFixed(1)} %`
+          : '--';
+    
+      sensorBend.textContent =
+        s.sensor_bend_factor !== null && s.sensor_bend_factor !== undefined
+          ? Number(s.sensor_bend_factor).toFixed(4)
+          : '--';
+    
+      sensorTotalBend.textContent =
+        s.total_bend_factor !== null && s.total_bend_factor !== undefined
+          ? Number(s.total_bend_factor).toFixed(4)
+          : '--';
     }
 
     if (data.volume !== undefined) {

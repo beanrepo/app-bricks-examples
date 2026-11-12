@@ -1,4 +1,4 @@
-name: Synth Emulator
+name: Synth Emulator V2
 icon: 🎹
 description: A MIDI-controllable synthesizer emulator with configurable CC mapping and real-time parameter control.
 bricks:
